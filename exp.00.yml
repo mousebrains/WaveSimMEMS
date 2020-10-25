@@ -1,0 +1,36 @@
+#
+# Simulate a series of waves on a surfaced glider
+#
+
+depth: 200 # Water depth in meters where the glider is
+duration: 600 # Observation length in seconds
+samplingRate: 10 # number of observations per second
+
+gliderDepth: 0.02 # glider's center of buoyancy depth when at the surface in m
+
+# MEMs sensor noise
+sensor:
+        accelerometer:
+                noise: 120 # microg/sqrt(Hertz)
+                bias:   30 # microg
+        gyro:
+                noise: 0.007 # degree/sec/sqrt(Hertz)
+                bias:  10 # degrees/hour
+
+# wave trains
+waves:
+        - name: "swell0"
+          amplitude: 2 # Meters (1/2 wave height, i.e. amplitude of sine wave)
+          heading: -45 # Degrees
+          period: 10 # Seconds
+          amplitudeSigma: 0.1 # Normal noise in meters of amplitude
+          headingSigma: 0.1 # Normal noise in degrees of heading, wave to wave
+          periodSigma: 0.5 # Normal noise in seconds of period, wave to wave
+
+        - name: "swell1"
+          amplitude: 1 # Meters (1/2 wave height, i.e. amplitude of sine wave)
+          heading: 45 # Degrees
+          period: 20 # Seconds
+          amplitudeSigma: 0.1 # Normal noise in meters of amplitude
+          headingSigma: 0.1 # Normal noise in degrees of heading, wave to wave
+          periodSigma: 0.5 # Normal noise in seconds of period, wave to wave
