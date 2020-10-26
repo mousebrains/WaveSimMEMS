@@ -18,14 +18,13 @@ def addArgs(parser:argparse.ArgumentParser) -> None:
 def process(fn:str, args:argparse.ArgumentParser, logger:logging.Logger) -> bool:
     (prefix, suffix) = os.path.splitext(fn)
     logfn = prefix + ".log"
-    csvfn = prefix + ".csv"
     ch = logging.FileHandler(logfn, mode="w")
     ch.setLevel(logging.DEBUG)
     ch.setFormatter(logging.Formatter("%(asctime)s: %(message)s"))
     logger.addHandler(ch)
     try:
         rs = np.random.RandomState(seed=args.seed)
-        __process(fn, csvfn, rs, logger)
+        __process(fn, prefix, rs, logger)
         return True
     except:
         logger.exception("Error processing %s", fn)
@@ -33,7 +32,7 @@ def process(fn:str, args:argparse.ArgumentParser, logger:logging.Logger) -> bool
     finally:
         logger.removeHandler(ch)
 
-def __process(fn:str, csvfn:str, rs:np.random.RandomState, logger:logging.Logger) -> bool:
+def __process(fn:str, prefix:str, rs:np.random.RandomState, logger:logging.Logger) -> bool:
     data = __loadYAML(fn, logger)
     if data is None: return False
 
@@ -44,44 +43,35 @@ def __process(fn:str, csvfn:str, rs:np.random.RandomState, logger:logging.Logger
         if key != "waves":
             logger.info("%s -> %s", key, data[key])
 
-    waves = {}
-    ellipses = {}
     pos = None
+    seen = set()
     for wave in data["waves"]:
         name = wave["name"]
         for key in sorted(wave):
             if key == "name": continue
             logger.info("wave %s %s -> %s", name, key, wave[key])
-        if name in waves:
+        if name in seen:
             raise Exception("Duplicate wave name, {}, found in {}".format(name, fn))
-        waves[name] = __mkWave(data, wave, rs)
-        # logger.info("Wave %s\n%s", name, waves[name])
-        ellipses[name] = __mkEllipse(data["depth"], data["gliderDepth"], waves[name], t, rs)
-        # logger.info("Ellipse %s\n%s", name, ellipses[name])
-        a = ellipses[name][["t", "x", "y", "z"]].copy()
+        seen.add(name)
+        info = __mkWave(data, wave, rs)
+        # logger.info("Wave %s\n%s", name, info)
+        info.to_csv("{}.{}.info.csv".format(prefix, name), index=False)
+        ellipse = __mkEllipse(data["depth"], data["gliderDepth"], info, t, rs)
+        # logger.info("Ellipse %s\n%s", name, ellipse)
+        ellipse.to_csv("{}.{}.ellipse.csv".format(prefix, name), index=False)
         if pos is None: # First wave
-            pos = a
+            keys = ["t"]
+            for key in sorted(ellipse):
+                if (key not in ["t", "hdg"]) and (key[0] != "w"):
+                    keys.append(key)
+            pos = ellipse[keys].copy()
         else: # Add additional waves
-            pos["x"] += a["x"]
-            pos["y"] += a["y"]
-            pos["z"] += a["z"]
+            for key in pos:
+                if key != "t":
+                    pos[key] += ellipse[key]
 
     if pos is None:
         raise Exception("No waves found for {}".format(fn))
-
-    dt = pos["t"].diff() # Time between samples in seconds
-
-    # Linear acceleration in m/sec in each true direction
-    pos["dxdt"] = pos["x"].diff() / dt
-    pos["dydt"] = pos["y"].diff() / dt
-    pos["dzdt"] = pos["z"].diff() / dt
-
-    # Angular acceleration in radians/sec about each true axis
-    # Use dot product x dot y = |x| |y| cos(theta)
-    # and solve for theta to get dtheta/dt
-    pos["dxydt"] = __mkAngularRate(pos["x"], pos["y"], dt)
-    pos["dxzdt"]   = __mkAngularRate(pos["x"], pos["z"], dt)
-    pos["dyzdt"]   = __mkAngularRate(pos["y"], pos["z"], dt)
 
     # TO BE ADDED
     # 
@@ -89,7 +79,7 @@ def __process(fn:str, csvfn:str, rs:np.random.RandomState, logger:logging.Logger
     # sensor noise
     #
 
-    pos.to_csv(csvfn, index=False)
+    pos.to_csv("{}.csv".format(prefix), index=False)
 
     return True
 
@@ -176,40 +166,112 @@ def __mkEllipse(depth:float,
         t:np.array, 
         rs:np.random.RandomState) -> pd.DataFrame:
     # See http://web.mit.edu/13.021/demos/lectures/lecture19.pdf
-    # Particle Orbits at the surface, i.e. y==0
+    # Particle Orbits at the surface
+    # N.B. x in the MIT lecture notes is along the wave's travel direction
+    #      y is the vertical direction (I will translate y to z here)
 
-    w0 = rs.uniform(0, 2 * np.pi) # Initial random phase of wave
-    dt0 = df["period"][0] * w0 / (2 * np.pi) # Initial random offset in time into first wave
+    # Start the wave train with a random time/phase offset
+    dt0 = df["period"][0] * rs.uniform(0, 1) # Random time offset, [0,period)
 
     amp = df["amp"].to_numpy()
     k = 2 * np.pi / df["lambda"].to_numpy() # Wave Number
-    omega = k * df["spd"].to_numpy() # angular frequency
+    omega = 2 * np.pi / df["period"].to_numpy() # Angular frequency
     denom = np.sinh(k * depth)
-    dx0 = -amp * np.cosh(k * (gliderDepth + depth)) / denom
-    dy0 =  amp * np.sinh(k * (gliderDepth + depth)) / denom
+    zbar = gliderDepth  # this is <z> or <y> in the lecture notes
+    x0 = -amp * np.cosh(k * (depth + zbar)) / denom
+    z0 =  amp * np.sinh(k * (depth + zbar)) / denom
 
     # Which wave to use at t with the random starting time offset
+    # This will transition between waves at a phase of zero
     indices = np.searchsorted(df["period"].cumsum(), t + dt0)
     indices[indices >= omega.size] = omega.size - 1
 
+    x0 = x0[indices] # One to many mapping wave to time
+    z0 = z0[indices]
+
     a = pd.DataFrame({"t": t})
 
-    term = -omega[indices] * (t + dt0)
-    a["dx"] = dx0[indices] * np.sin(term)
-    a["dy"] = dy0[indices] * np.cos(term)
+    # The w prefix indicates in wave coordinates, i.e. wx -> Along wave, wz -> vertical
+    # sin/cos(-w(t+dt))
+    w    = -omega[indices] # Negative angular frequency at each time t
+    term = w * (t + dt0)   # sine/cosine argument
+    sterm = np.sin(term)
+    cterm = np.cos(term)
 
-    hdg = df["hdg"].to_numpy()[indices]
-    a["hdg"] = hdg
-    hdg = np.radians(hdg)
+    # The position at time t
+    a["wx"] = x0 * sterm # Horizontal position along the wave direction
+    a["wz"] = z0 * cterm # Vertical position
 
-    # Now rotate by heading into true north coordinates
+    # the velocity at time t, i.e. first derivative wrt t
+    a["wvx"] =  x0 * w * cterm # d(wx)/dt
+    a["wvz"] = -z0 * w * sterm # d(wz)/dt
+
+    # the acceleration at time t, the second derivative wrt t
+    a["wax"] = -x0 * w * w * sterm # d^2(wx)/d^2t
+    a["waz"] = -z0 * w * w * cterm # d^2(wz)/d^2t
+
+    # the angular velocity
+    # omega = (r cross v) / |r|^2
+    #       = perpendicular velocity over |r|
+    # r = (wx,  0, wz)
+    # v = (wvx, 0, wvz)
+    # |r| = sqrt(wx^2 + wz^2)
+    # vPerp = |r cross v| / |r|
+    r = np.sqrt(np.square(a["wx"]) + np.square(a["wz"])) # radial distance
+    a["wr"] = r # radial distance
+    a["wvPerp"] = (a["wz"] * a["wvx"] - a["wx"] * a["wvz"]) / r # (r cross v) / r
+    a["wOmega"] = a["wvPerp"] / r # Angular velocity in wave space in wy direction
+
+    # the angular accceleration
+    # a = (wax, 0, waz)
+    # alpha = d((r cross v) / |r|^2) / dt
+    #       = (r cross a)/|r|^2 - 2/|r| omega d|r|/dt
+    # d|r|/dt = d((wx^2 + wz^2)^1/2)/dt
+    #         = 1/2 (wx^2 + wz^2)^(-1/2) d(wx^2 + wz^2)/dt
+    #         = 1/(2r) (2 wx d(wx)/dt + 2 wz d(wz)/dt)
+    #         = (wx wvx + wz wvz) / r
+    # since 2D I only need to calculate y component
+    alpha0 = (a["wz"] * a["wax"] - a["wx"] * a["waz"]) / np.square(r) # (r crossa) / r^2
+    drdt = (a["wx"] * a["wvx"] + a["wz"] * a["wvz"]) / r # dr/dt
+    alpha1 = -2/r * a["wOmega"] * drdt # 2/|r| omega d|r|/dt
+    a["wAlpha"] = alpha0 + alpha1 # angular acceleration in wy direction
+
+    # Now rotate to earth coordinates
+    # hdg is the angle from true north eastward
     #  x -> Eastward
     #  y -> Northward
-    #  z -> Vertical
-    #  hdg is clockwise angle from true north
-    a["x"] = a["dx"] * np.sin(hdg) # Eastward direction
-    a["y"] = a["dx"] * np.cos(hdg) # Northward direction
-    a["z"] = a["dy"] # Vertical position
+    #  z -> Vertical (This is the same in earth and wave coordinates
+
+    a["hdg"] = df["hdg"].to_numpy()[indices] # wave direction in degrees at time t
+    hdg = np.radians(a["hdg"]) # Heading at t in radians
+    shdg = np.sin(hdg)
+    chdg = np.cos(hdg)
+
+    # Rotate position from wave to earth
+    a["x"]      = a["wx"] * shdg # Eastward
+    a["y"]      = a["wx"] * chdg # Northward
+    a["z"]      = a["wz"]        # Vertical
+
+    # Rotate velocity from wave to earth
+    a["vx"]   = a["wvx"] * shdg # Eastward
+    a["vy"]   = a["wvx"] * chdg # Northward
+    a["vz"]   = a["wvz"] * chdg # Vertical
+
+    # Rotate acceleration from wave to earth
+    a["ax"] = a["wax"] * shdg # Eastward
+    a["ay"] = a["wax"] * chdg # Northward
+    a["az"] = a["waz"]        # Vertical
+
+    # Note, angular velocity and acceleration are in wy direction,
+    # Rotate angular velocity from wave to earth
+    a["omegax"] =  a["wOmega"] * chdg # Eastward
+    a["omegay"] = -a["wOmega"] * shdg # Northward
+    a["omegaz"] = np.zeros(a["wOmega"].shape) # Vertical always zero
+
+    # Rotate angular acceleration from wave to earth
+    a["alphax"] =  a["wAlpha"] * chdg # Eastward
+    a["alphay"] = -a["wAlpha"] * shdg # Northward
+    a["alphaz"] = np.zeros(a["wAlpha"].shape) # Vertical always zero
 
     return a
 
