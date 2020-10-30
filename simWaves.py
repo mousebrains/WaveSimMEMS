@@ -1,4 +1,4 @@
-#! /usr/bin/env python3.8
+#! /usr/bin/env python3
 #
 # Simulate waves for a surfaced glider
 #
