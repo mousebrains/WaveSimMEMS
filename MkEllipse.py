@@ -123,49 +123,13 @@ def mkEllipse(depth:float,
     alpha1 = -2/r * a["wOmega"] * drdt # 2/|r| omega d|r|/dt
     a["wAlpha"] = alpha0 + alpha1 # angular acceleration in wy direction
 
-    # Now rotate to earth coordinates
-    # hdg is the angle from true north eastward
-    #  x -> Eastward
-    #  y -> Northward
-    #  z -> Vertical (This is the same in earth and wave coordinates
-
     a["hdg"] = df["hdg"].to_numpy()[indices] # wave direction in degrees at time t
-    hdg = np.radians(a["hdg"]) # Heading at t in radians
-    shdg = np.sin(hdg)
-    chdg = np.cos(hdg)
-
-    # Rotate position from wave to earth
-    a["x"]      = a["wx"] * shdg # Eastward
-    a["y"]      = a["wx"] * chdg # Northward
-    a["z"]      = a["wz"]        # Vertical
-
-    # Rotate velocity from wave to earth
-    a["vx"]   = a["wvx"] * shdg # Eastward
-    a["vy"]   = a["wvx"] * chdg # Northward
-    a["vz"]   = a["wvz"] * chdg # Vertical
-
-    # Rotate acceleration from wave to earth
-    a["ax"] = a["wax"] * shdg # Eastward
-    a["ay"] = a["wax"] * chdg # Northward
-    a["az"] = a["waz"]        # Vertical
-
-    # Note, angular velocity and acceleration are in wy direction,
-    # Rotate angular velocity from wave to earth
-    a["omegax"] =  a["wOmega"] * chdg # Eastward
-    a["omegay"] = -a["wOmega"] * shdg # Northward
-    a["omegaz"] = np.zeros(a["wOmega"].shape) # Vertical always zero
-
-    # Rotate angular acceleration from wave to earth
-    a["alphax"] =  a["wAlpha"] * chdg # Eastward
-    a["alphay"] = -a["wAlpha"] * shdg # Northward
-    a["alphaz"] = np.zeros(a["wAlpha"].shape) # Vertical always zero
-
     return a
 
-def saveCSV(fn:str, name:str, info:pd.DataFrame) -> None:
+def saveCSV(fn:str, name:str, df:pd.DataFrame) -> None:
     (prefix, suffix) = os.path.splitext(fn)
     ofn = "{}.{}.ellipse.csv".format(prefix, name)
-    info.to_csv(ofn, index=False)
+    df.to_csv(ofn, index=False)
 
 if __name__ == "__main__":
     import argparse

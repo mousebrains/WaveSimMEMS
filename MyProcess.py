@@ -11,6 +11,7 @@ import os.path
 import numpy as np
 import MkWaveTrain
 import MkEllipse
+import RotateToEarth
 
 def addArgs(parser:argparse.ArgumentParser) -> None:
     parser.add_argument("--seed", type=int, help="Random seed, 32 bit integer")
@@ -57,16 +58,18 @@ def __process(fn:str, prefix:str, rs:np.random.RandomState, logger:logging.Logge
         MkWaveTrain.saveCSV(fn, name, info)
         ellipse = MkEllipse.mkEllipse(data["depth"], data["gliderDepth"], info, t, rs)
         MkEllipse.saveCSV(fn, name, ellipse)
+        earth = RotateToEarth.rotate(ellipse)
+        RotateToEarth.saveCSV(fn, name, earth)
         if pos is None: # First wave
             keys = ["t"]
-            for key in sorted(ellipse):
-                if (key not in ["t", "hdg"]) and (key[0] != "w"):
+            for key in sorted(earth):
+                if key not in ["t", "hdg"]:
                     keys.append(key)
-            pos = ellipse[keys].copy()
+            pos = earth[keys].copy()
         else: # Add additional waves
             for key in pos:
                 if key != "t":
-                    pos[key] += ellipse[key]
+                    pos[key] += earth[key]
 
     if pos is None:
         raise Exception("No waves found for {}".format(fn))
