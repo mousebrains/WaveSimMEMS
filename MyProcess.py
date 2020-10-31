@@ -57,7 +57,6 @@ def __process(fn:str, prefix:str, rs:np.random.RandomState, logger:logging.Logge
         MkWaveTrain.saveCSV(fn, name, info)
         ellipse = MkEllipse.mkEllipse(data["depth"], data["gliderDepth"], info, t, rs)
         MkEllipse.saveCSV(fn, name, ellipse)
-        ellipse.to_csv("{}.{}.ellipse.csv".format(prefix, name), index=False)
         if pos is None: # First wave
             keys = ["t"]
             for key in sorted(ellipse):
