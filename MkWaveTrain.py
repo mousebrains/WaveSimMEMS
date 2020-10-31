@@ -23,7 +23,7 @@ import math
 import WaveLength
 import os.path
 
-def mkWave(data:dict, wave:dict, rs:np.random.RandomState) -> dict:
+def mkTrain(data:dict, wave:dict, rs:np.random.RandomState) -> dict:
     depth = data["depth"]
     duration = data["duration"]
     tMin = duration + wave["period"] # Make sure we have a whole extra period
@@ -82,7 +82,7 @@ if __name__ == "__main__":
             if name in seen:
                 raise Exception("Duplicate wave name, {}, found in {}".format(name, fn))
             seen.add(name)
-            info = mkWave(data, wave, rs)
+            info = mkTrain(data, wave, rs)
             logger.info("Wave %s\n%s", name, info)
             if args.save:
                 saveCSV(fn, name, info)

@@ -9,7 +9,7 @@ import MyYAML
 import logging
 import os.path
 import numpy as np
-import MkWave
+import MkWaveTrain
 import MkEllipse
 
 def addArgs(parser:argparse.ArgumentParser) -> None:
@@ -53,8 +53,8 @@ def __process(fn:str, prefix:str, rs:np.random.RandomState, logger:logging.Logge
         if name in seen:
             raise Exception("Duplicate wave name, {}, found in {}".format(name, fn))
         seen.add(name)
-        info = MkWave.mkWave(data, wave, rs)
-        MkWave.saveCSV(fn, name, info)
+        info = MkWaveTrain.mkTrain(data, wave, rs)
+        MkWaveTrain.saveCSV(fn, name, info)
         ellipse = MkEllipse.mkEllipse(data["depth"], data["gliderDepth"], info, t, rs)
         MkEllipse.saveCSV(fn, name, ellipse)
         ellipse.to_csv("{}.{}.ellipse.csv".format(prefix, name), index=False)
