@@ -59,7 +59,7 @@ def mkEllipse(depth:float,
     #      y is the vertical direction (I will translate y to z here)
 
     # Start the wave train with a random time/phase offset
-    dt0 = df["period"][0] * rs.uniform(0, 1) # Random time offset, [0,period)
+    dt0 = rs.uniform(0, df["period"][0]) # Random time offset, [0,period)
 
     amp = df["amp"].to_numpy()
     k = 2 * np.pi / df["lambda"].to_numpy() # Wave Number
