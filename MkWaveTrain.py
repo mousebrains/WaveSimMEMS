@@ -33,8 +33,9 @@ def mkTrain(data:dict, wave:dict, rs:np.random.RandomState) -> dict:
         period = rs.normal(wave["period"], wave["periodSigma"], size=(nWaves+cnt,))
         period = period[period > minPeriod]
         t = period.cumsum()
-        if t.max() >= tMin: # Long enough, so keep
-            period = period[t <= tMin] # Trim periods to just what we need
+        if t[-1] >= tMin: # Long enough, so keep
+            ii = np.argmax(t > tMin)
+            period = period[:(ii+1)] # Trim periods to just what we need
             break
     if period.sum() < tMin:
         raise Exception("not enough waves generated for period {}".format(wave["period"]))
