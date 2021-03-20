@@ -41,6 +41,17 @@ def waveLength(depth:float, period:np.array, **kwargs) -> np.array:
     # threshold is in meters
     # g gravitational acceleration m/sec^2
     # result is in meters
+    #
+    # Use the dispersion relationship
+    # lambda = g period^2 / 2pi tanh(2pi depth / lambda)
+    # 
+    # In the limit of depth >> lambda, deep water, then
+    # lambda -> g period^2 / 2pi
+    #
+    # In the limit of depth << lambda, shallow water, then
+    # lambda -> sqrt(g * depth) * period
+    #
+    # In between use the dispersion relationship to find a solution
 
     items = {"threshold": 0.01, # m
             "maxIter": 10,  # count
@@ -59,26 +70,23 @@ def waveLength(depth:float, period:np.array, **kwargs) -> np.array:
     twoPiDepth = twoPi * depth
 
     L = g * period2 / twoPi # Deep water approximation
+
+    # Switch to shallow water when |tanh| < 0.75
     term = np.tanh(twoPi * depth / L) # see how close tanh is to one
     msk = abs(term) < 0.75 # Use shallow water approximation in these cases
 
     if msk.sum(): # Some shallow water apprixmations needed
         L[msk] = np.sqrt(g * depth) * period[msk] # Shallow water approximation
 
-    lhs = twoPi / (g * period2)
-
-    for cnt in range(maxIter): # Maximum number of iterations
-        dL = (0.001 * L) / 2 # derivative step size
-        xlhs = L - dL
-        xrhs = L + dL
-        y = lhs - np.tanh(twoPiDepth / L) / L
-        ylhs = lhs - np.tanh(twoPiDepth / xlhs) / xlhs
-        yrhs = lhs - np.tanh(twoPiDepth / xrhs) / xrhs
-        dy = (ylhs - yrhs) / (xlhs - xrhs)
-        dL = y / dy
-        L -= dL
-        if abs(dL).max() < threshold:
-            break
+    for cnt in range(maxIter):
+        term = twoPiDepth / L # Tanh term
+        tanhTerm = np.tanh(term)
+        f = L - g * period2 / twoPi * tanhTerm
+        if not np.any(f > threshold): break
+        dTanh = -(1 - np.square(tanhTerm)) * twoPiDepth / np.square(L)
+        dfdL = 1 - g * period2 / twoPi * dTanh
+        # Use Newton-Raphson method to find next L
+        L -= f / dfdL
 
     return L
 
@@ -87,7 +95,7 @@ if __name__ == "__main__":
     import pandas as pd
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-depth", type=float, metavar="meters", default=200,
+    parser.add_argument("--depth", type=float, metavar="meters", default=200,
             help="Water depth in meters")
     parser.add_argument("--minPeriod", type=float, metavar="seconds", default=1,
             help="Minimum Wave period in seconds")
