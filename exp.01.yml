@@ -1,0 +1,40 @@
+#
+# Simulate a series of waves on a surfaced glider
+#
+
+depth: 200 # Water depth in meters where the glider is
+duration: 600 # Observation length in seconds
+samplingRate: 10 # Number of observations per second
+
+gliderDepth: 0.02 # glider's center of buoyancy depth when at the surface in m
+
+# True to Magnetic
+# From https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml#igrfwmm
+# for 45N 125W at sea level on 2001-03-04 using the WMM model
+
+magDeclination: 15.2947 # Degrees eastward
+magInclination: 66.4238 # Degrees downwards
+
+# Analysis related parameters
+
+nPerSegment: 2048 # Segment length for the Welch method when calculating FFTs
+windowType: boxcar # Windowing type for the Welch mothod when calculating FFTs
+
+# MEMs sensor noise
+sensor:
+        accelerometer:
+                noise: 120 # microg/sqrt(Hertz)
+                bias:   30 # microg
+        gyro:
+                noise: 0.007 # degree/sec/sqrt(Hertz)
+                bias:  10 # degrees/hour
+
+# wave trains
+waves:
+        - name: "swell1"
+          amplitude: 4.0 # Meters (1/2 wave height, i.e. amplitude of sine wave)
+          heading: -135 # Degrees
+          period: 14 # Seconds
+          amplitudeSigma: 0.25 # Normal noise in meters of amplitude
+          headingSigma: 15.0 # Normal noise in degrees of heading, wave to wave
+          periodSigma: 0.2 # Normal noise in seconds of period, wave to wave
