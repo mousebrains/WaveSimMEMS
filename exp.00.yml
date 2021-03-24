@@ -4,9 +4,16 @@
 
 depth: 200 # Water depth in meters where the glider is
 duration: 600 # Observation length in seconds
-samplingRate: 10 # number of observations per second
+samplingRate: 10 # Number of observations per second
 
 gliderDepth: 0.02 # glider's center of buoyancy depth when at the surface in m
+
+# True to Magnetic
+# From https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml#igrfwmm
+# for 45N 125W at sea level on 2001-03-04 using the WMM model
+
+magDeclination: 15.2947 # Degrees eastward
+magInclination: 66.4238 # Degrees downwards
 
 # MEMs sensor noise
 sensor:
@@ -19,18 +26,18 @@ sensor:
 
 # wave trains
 waves:
-        - name: "swell0"
-          amplitude: 2 # Meters (1/2 wave height, i.e. amplitude of sine wave)
+        - name: "wind0"
+          amplitude: 0.5 # Meters (1/2 wave height, i.e. amplitude of sine wave)
           heading: -45 # Degrees
-          period: 10 # Seconds
+          period: 5 # Seconds
           amplitudeSigma: 0.1 # Normal noise in meters of amplitude
-          headingSigma: 0.1 # Normal noise in degrees of heading, wave to wave
-          periodSigma: 0.5 # Normal noise in seconds of period, wave to wave
+          headingSigma: 1. # Normal noise in degrees of heading, wave to wave
+          periodSigma: 0.01 # Normal noise in seconds of period, wave to wave
 
         - name: "swell1"
-          amplitude: 1 # Meters (1/2 wave height, i.e. amplitude of sine wave)
+          amplitude: 2 # Meters (1/2 wave height, i.e. amplitude of sine wave)
           heading: 45 # Degrees
-          period: 20 # Seconds
-          amplitudeSigma: 0.1 # Normal noise in meters of amplitude
-          headingSigma: 0.1 # Normal noise in degrees of heading, wave to wave
-          periodSigma: 0.5 # Normal noise in seconds of period, wave to wave
+          period: 12 # Seconds
+          amplitudeSigma: 0.5 # Normal noise in meters of amplitude
+          headingSigma: 1. # Normal noise in degrees of heading, wave to wave
+          periodSigma: 0.1 # Normal noise in seconds of period, wave to wave
