@@ -9,7 +9,6 @@
 #           zbar=0 is at the surface, zbar>0 below the surface
 #  df -- Output of mkWave
 #  t  -- times to sample at
-#  rs -- random number generator
 #
 # The output is:
 #  a["t"] time of observation starting at zero in seconds
@@ -46,42 +45,50 @@
 
 import numpy as np
 import pandas as pd
+from scipy.interpolate import interp1d
 import os.path
+import sys
+
+def myInterp(x, y, t) -> np.array:
+    a = interp1d(x, y, kind="quadratic", copy=False, fill_value="extrapolate", assume_sorted=True)
+    return a(t)
 
 def mkEllipse(depth:float,
         zbar:float,
         df:pd.DataFrame, 
-        t:np.array, 
-        rs:np.random.RandomState) -> pd.DataFrame:
+        t:np.array) -> pd.DataFrame:
     # See http://web.mit.edu/13.021/demos/lectures/lecture19.pdf
     # Particle Orbits at the surface
     # N.B. x in the MIT lecture notes is along the wave's travel direction
     #      y is the vertical direction (I will translate y to z here)
 
-    # Start the wave train with a random time/phase offset
-    dt0 = rs.uniform(0, df["period"][0]) # Random time offset, [0,period)
+    # A random phase for this wave
+    phase = np.random.uniform(0, 2*np.pi) # phase offset for this wave, [0,2pi)
 
-    amp = df["amp"].to_numpy()
-    k = 2 * np.pi / df["lambda"].to_numpy() # Wave Number
-    omega = 2 * np.pi / df["period"].to_numpy() # Angular frequency
+    df["t"] = df.period.cumsum() - (df.period[0]/2) # Source time stamps
+
+    # Interpolate smoothly over t
+    period = myInterp(df.t, df.period, t)
+    amp = myInterp(df.t, df.amp, t)
+    hdg = myInterp(df.t, df.hdg, t)
+    waveLen = myInterp(df.t, df["lambda"], t) # Lambda is a reserved keyword
+    spd = myInterp(df.t, df.spd, t)
+    a = myInterp(df.t, df.a, t)
+    b = myInterp(df.t, df.b, t)
+
+    k = 2 * np.pi / waveLen # Wave Number
+    omega = 2 * np.pi / period # Angular frequency
     denom = np.sinh(k * depth)
+
     x0 = -amp * np.cosh(k * (depth + zbar)) / denom
     z0 =  amp * np.sinh(k * (depth + zbar)) / denom
-
-    # Which wave to use at t with the random starting time offset
-    # This will transition between waves at a phase of zero
-    indices = np.searchsorted(df["period"].cumsum(), t + dt0)
-    indices[indices >= omega.size] = omega.size - 1
-
-    x0 = x0[indices] # One to many mapping wave to time
-    z0 = z0[indices]
 
     a = pd.DataFrame({"t": t})
 
     # The w prefix indicates in wave coordinates, i.e. wx -> Along wave, wz -> vertical
     # sin/cos(-w(t+dt))
-    w    = -omega[indices] # Negative angular frequency at each time t
-    term = w * (t + dt0)   # sine/cosine argument
+    w    = -omega # Negative angular frequency at each time t
+    term = w * t + phase # sine/cosine argument
     sterm = np.sin(term)
     cterm = np.cos(term)
 
@@ -123,7 +130,7 @@ def mkEllipse(depth:float,
     alpha1 = -2/r * a["wOmega"] * drdt # 2/|r| omega d|r|/dt
     a["wAlpha"] = alpha0 + alpha1 # angular acceleration in wy direction
 
-    a["hdg"] = df["hdg"].to_numpy()[indices] # wave direction in degrees at time t
+    a["hdg"] = hdg # wave direction in degrees at time t
     return a
 
 def saveCSV(fn:str, name:str, df:pd.DataFrame) -> None:
@@ -131,16 +138,26 @@ def saveCSV(fn:str, name:str, df:pd.DataFrame) -> None:
     ofn = "{}.{}.ellipse.csv".format(prefix, name)
     df.to_csv(ofn, index=False)
 
+def plotit(ax, df, x, y):
+    ax.plot(df[x], df[y])
+    ax.grid()
+    ax.set_xlabel(x)
+    ax.set_ylabel(y)
+
 if __name__ == "__main__":
     import argparse
+    import time
     import MyYAML
     import MyLogger
+    import matplotlib.pyplot as plt
 
     parser = argparse.ArgumentParser()
     parser.add_argument("yaml", metavar="fn.yml", help="YAML file(s) to load")
     parser.add_argument("wave", metavar="fn.csv", help="Output of mkWave to load")
-    parser.add_argument("--seed", type=int, help="Random number generator seed, 32 bit int")
+    parser.add_argument("--seed", type=int, default=int(time.time()),
+            help="Random number generator seed, 32 bit int")
     parser.add_argument("--save", action="store_true", help="Should CSV output files be generated?")
+    parser.add_argument("--plot", action="store_true", help="Diagnostic plots")
     MyLogger.addArgs(parser)
     args = parser.parse_args()
 
@@ -153,11 +170,21 @@ if __name__ == "__main__":
     parts = args.wave.split(".")
     name = parts[-3] # Wave name
 
-    rs = np.random.RandomState(seed=args.seed)
+    logger.info("Seed=%s", args.seed)
+    np.random.seed(seed=args.seed)
     dt = 1 / data["samplingRate"] # Time between observations in seconds
-    t = np.arange(0, data["duration"] + dt, dt) # Observation times [0, duration]
-    df = mkEllipse(data["depth"], data["gliderDepth"], info, t, rs)
+    t = np.arange(0, data["duration"] + dt/2, dt) # Observation times [0, duration]
+    df = mkEllipse(data["depth"], data["gliderDepth"], info, t)
     logger.info("Wave %s\n%s", name, df)
     if args.save:
         saveCSV(args.yaml, name, df)
 
+    if args.plot:
+        (figs, ax) = plt.subplots(3, 2, figsize=(10,10))
+        plotit(ax[0,0], df, "wx", "wz")
+        plotit(ax[1,0], df, "wvx", "wvz")
+        plotit(ax[2,0], df, "wax", "waz")
+        plotit(ax[0,1], df, "t", "wr")
+        plotit(ax[1,1], df, "t", "wvPerp")
+        plotit(ax[2,1], df, "t", "wOmega")
+        plt.show()
