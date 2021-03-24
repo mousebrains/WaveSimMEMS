@@ -7,42 +7,46 @@
 import argparse
 import MyYAML
 import logging
+import time
 import os.path
 import numpy as np
 import MkWaveTrain
 import MkEllipse
 import RotateToEarth
+import Analysis
+import pandas as pd
 
 def addArgs(parser:argparse.ArgumentParser) -> None:
-    parser.add_argument("--seed", type=int, help="Random seed, 32 bit integer")
+    parser.add_argument("--seed", type=int, default=int(time.time()),
+            help="Random seed, 32 bit integer")
 
-def process(fn:str, args:argparse.ArgumentParser, logger:logging.Logger) -> bool:
-    (prefix, suffix) = os.path.splitext(fn)
-    logfn = prefix + ".log"
+def process(fn:str, args:argparse.ArgumentParser, logger:logging.Logger) -> pd.DataFrame:
+    (prefix, suffix) = os.path.splitext(fn) # Strip off yaml file suffix
+    logfn = prefix + ".log" # Make a new log filename for this process
     ch = logging.FileHandler(logfn, mode="w")
     ch.setLevel(logging.DEBUG)
     ch.setFormatter(logging.Formatter("%(asctime)s: %(message)s"))
     logger.addHandler(ch)
+    logger.info("Seed=%s", args.seed)
+    np.random.seed(args.seed)
     try:
-        rs = np.random.RandomState(seed=args.seed)
-        __process(fn, prefix, rs, logger)
-        return True
+        return __process(fn, prefix, logger)
     except:
         logger.exception("Error processing %s", fn)
-        return False
+        return None
     finally:
         logger.removeHandler(ch)
 
-def __process(fn:str, prefix:str, rs:np.random.RandomState, logger:logging.Logger) -> bool:
+def __process(fn:str, prefix:str, logger:logging.Logger) -> pd.DataFrame:
     data = MyYAML.load(fn, logger)
     if data is None: return False
-
-    dt = 1 / data["samplingRate"] # Time between observations
-    t = np.arange(0, data["duration"] + dt, dt) # observation times [0, duration]
 
     for key in sorted(data):
         if key != "waves":
             logger.info("%s -> %s", key, data[key])
+
+    dt = 1 / data["samplingRate"] # Time between model steps
+    t = np.arange(0, data["duration"] + dt/2, dt) # model times [0, duration]
 
     pos = None
     seen = set()
@@ -54,22 +58,18 @@ def __process(fn:str, prefix:str, rs:np.random.RandomState, logger:logging.Logge
         if name in seen:
             raise Exception("Duplicate wave name, {}, found in {}".format(name, fn))
         seen.add(name)
-        info = MkWaveTrain.mkTrain(data, wave, rs)
+        info = MkWaveTrain.mkTrain(data, wave)
         MkWaveTrain.saveCSV(fn, name, info)
-        ellipse = MkEllipse.mkEllipse(data["depth"], data["gliderDepth"], info, t, rs)
+        ellipse = MkEllipse.mkEllipse(data["depth"], data["gliderDepth"], info, t)
         MkEllipse.saveCSV(fn, name, ellipse)
         earth = RotateToEarth.rotate(ellipse)
         RotateToEarth.saveCSV(fn, name, earth)
         if pos is None: # First wave
-            keys = ["t"]
-            for key in sorted(earth):
-                if key not in ["t", "hdg"]:
-                    keys.append(key)
-            pos = earth[keys].copy()
+            pos = earth[earth.columns[earth.columns != "hdg"]].copy()
         else: # Add additional waves
-            for key in pos:
-                if key != "t":
-                    pos[key] += earth[key]
+            cols = earth.columns[earth.columns != "hdg"]
+            cols = cols[cols != "t"]
+            pos[cols] += earth[cols]
 
     if pos is None:
         raise Exception("No waves found for {}".format(fn))
@@ -82,4 +82,10 @@ def __process(fn:str, prefix:str, rs:np.random.RandomState, logger:logging.Logge
 
     pos.to_csv("{}.csv".format(prefix), index=False)
 
-    return True
+    (info, ndInfo) = Analysis.analyze(fn, data, pos, data["depth"], logger, 
+            nPerSegment=data["nPerSegment"] if "nPerSegment" in data else None,
+            window=data["windowType"] if "windowType" in data else "boxcar")
+    Analysis.saveCSV(fn, info, "analysis")
+    Analysis.saveCSV(fn, ndInfo, "ndInfo")
+    
+    return info
