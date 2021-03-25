@@ -35,6 +35,6 @@ waves:
           amplitude: 4.0 # Meters (1/2 wave height, i.e. amplitude of sine wave)
           heading: -135 # Degrees
           period: 14 # Seconds
-          amplitudeSigma: 0.25 # Normal noise in meters of amplitude
+          amplitudeSigma: 1.00 # Normal noise in meters of amplitude
           headingSigma: 15.0 # Normal noise in degrees of heading, wave to wave
           periodSigma: 0.2 # Normal noise in seconds of period, wave to wave

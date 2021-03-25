@@ -29,6 +29,9 @@ def plotit(data:pd.DataFrame, threshold:float=None) -> None:
             a2 * np.cos(2*thetaG) + b2 * np.sin(2*thetaG)
             ) / np.pi
 
+    # This is in units of m^2/Hz/radian, so convert to mm^2/Hz/degree
+    D *= np.pi / 180 # m^2/Hz/radian -> mm^2/Hz/degree
+
     # Directional spectra
     S = C11 * D # N.B. a1, b1, a2, and b2 have already been divided by C11/Czz
 
