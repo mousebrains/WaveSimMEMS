@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 import math
 import time
-import WaveLength
+import WaveNumber
 import os.path
 
 def mkTrain(data:dict, wave:dict) -> dict:
@@ -44,7 +44,7 @@ def mkTrain(data:dict, wave:dict) -> dict:
     df = pd.DataFrame({"period": period})
     df["amp"] = np.random.normal(wave["amplitude"], wave["amplitudeSigma"], size=period.shape)
     df["hdg"] = np.random.normal(wave["heading"], wave["headingSigma"], size=period.shape)
-    df["lambda"] = WaveLength.waveLength(depth, period)
+    df["lambda"] = WaveNumber.waveLength(depth, period)
     df["spd"] = df["lambda"] / df["period"] # Phase speed in m/sec
 
     # See http://web.mit.edu/13.021/demos/lectures/lecture19.pdf

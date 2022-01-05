@@ -13,7 +13,6 @@ import math
 import pandas as pd
 import numpy as np
 from scipy import signal
-import WaveLength
 import matplotlib.pyplot as plt
 
 def analyze(fn:str, data:dict, pos:pd.DataFrame, depth:float,
